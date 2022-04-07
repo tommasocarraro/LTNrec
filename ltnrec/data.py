@@ -82,22 +82,22 @@ class MindReaderDataset:
         """
         Returns the validation data contained in the split of the dataset. The validation data is organized as follows.
         For each validation user, we have one positive interaction and 100 randomly sampled negative interactions.
-        So, for each user, we have 101 user-item pairs, where the first pair represents the positive interaction
-        while the last 100 pairs represent the negative interactions.
+        So, for each user, we have 101 user-item pairs, where the last pair represents the positive interaction
+        while the first 100 pairs represent the negative interactions.
         """
-        return [np.concatenate(([[u, self.movie_to_idx[self.idx_to_uri[pos]]]],
-                                [[u, self.movie_to_idx[self.idx_to_uri[n]]] for n in negs]), axis=0)
+        return [np.concatenate(([[u, self.movie_to_idx[self.idx_to_uri[n]]] for n in negs],
+                                [[u, self.movie_to_idx[self.idx_to_uri[pos]]]]), axis=0)
                 for u, (pos, negs) in self.split['validation']]
 
     def get_test(self):
         """
         Returns the test data contained in the split of the dataset. The test data is organized as follows.
         For each validation user, we have one positive interaction and 100 randomly sampled negative interactions.
-        So, for each user, we have 101 user-item pairs, where the first pair represents the positive interaction
-        while the last 100 pairs represent the negative interactions.
+        So, for each user, we have 101 user-item pairs, where the last pair represents the positive interaction
+        while the first 100 pairs represent the negative interactions.
         """
-        return [np.concatenate(([[u, self.movie_to_idx[self.idx_to_uri[pos]]]],
-                                [[u, self.movie_to_idx[self.idx_to_uri[n]]] for n in negs]), axis=0)
+        return [np.concatenate(([[u, self.movie_to_idx[self.idx_to_uri[n]]] for n in negs],
+                               [[u, self.movie_to_idx[self.idx_to_uri[pos]]]]), axis=0)
                 for u, (pos, negs) in self.split['testing']]
 
     def get_movie_genres_uri(self, path):

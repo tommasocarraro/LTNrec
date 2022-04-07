@@ -3,9 +3,10 @@ import torch
 import ltn
 
 
-class TrainingDataLoader:
+class TrainingDataLoaderLTN:
     """
-    Data loader to load the training set of the mindreader dataset.
+    Data loader to load the training set of the mindreader dataset. It creates batches and wrap them inside LTN
+    variables.
     """
     def __init__(self,
                  data,
@@ -43,6 +44,45 @@ class TrainingDataLoader:
                    ltn.Variable('neg_i_idx', torch.tensor(neg_rat[:, 1]), add_batch_dim=False))
 
 
+class TrainingDataLoaderStandard:
+    """
+    Data loader to load the training set of the mindreader dataset. It creates batches composed of user-item pairs
+    and their corrensponding ratings.
+    """
+    def __init__(self,
+                 data,
+                 batch_size=1,
+                 shuffle=True):
+        """
+        Constructor of the training data loader.
+
+        :param data: list of triples (user, item, rating)
+        :param batch_size: batch size for the training of the model
+        :param shuffle: whether to shuffle data during training or not
+        """
+        self.data = np.array(data)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+    def __len__(self):
+        return int(np.ceil(self.data.shape[0] / self.batch_size))
+
+    def __iter__(self):
+        n = self.data.shape[0]
+        idxlist = list(range(n))
+        if self.shuffle:
+            np.random.shuffle(idxlist)
+
+        for _, start_idx in enumerate(range(0, n, self.batch_size)):
+            end_idx = min(start_idx + self.batch_size, n)
+            data = self.data[idxlist[start_idx:end_idx]]
+            u_i_pairs = data[:, :2]
+            ratings = data[:, -1]
+            ratings[ratings == -1] = 0
+
+            yield torch.tensor(u_i_pairs), torch.tensor(ratings).float()
+
+
 class ValDataLoader:
     """
     Data loader to load the validation/test set of the mindreader dataset.
@@ -71,6 +111,6 @@ class ValDataLoader:
             end_idx = min(start_idx + self.batch_size, n)
             data = self.data[idxlist[start_idx:end_idx]]
             ground_truth = np.zeros((data.shape[0], 101))
-            ground_truth[:, 0] = 1
+            ground_truth[:, -1] = 1
 
             yield torch.tensor(data), ground_truth
