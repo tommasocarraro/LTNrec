@@ -1,5 +1,4 @@
 import numpy as np
-import bottleneck as bn
 valid_metrics = ['ndcg', 'recall', 'hit']
 
 
@@ -65,14 +64,36 @@ def recall_at_k(pred_scores, ground_truth, k=10):
     return rank_relevance.sum(axis=1) / np.minimum(k, ground_truth.sum(axis=1))
 
 
-def compute_metrics(pred_scores, ground_truth, metrics, k_values):
-    assert all([m in valid_metrics for m in metrics]), "Wrong metrics have been passed. Accepted metrics are " + \
-                                                       str(valid_metrics)
-    results = {}
-    for m in metrics:
-        results[m] = {}
-        for k in k_values:
-            results[m][k] = hit_at_k(pred_scores, ground_truth, k) if m == "hit" else \
-                            (ndcg_at_k(pred_scores, ground_truth, k) if m == "ncdg" else
-                             recall_at_k(pred_scores, ground_truth, k))
-    return results
+def check_metrics(metrics):
+    """
+    Check if the given list of metrics' names is correct.
+
+    :param metrics: list of str containing the name of some metrics
+    """
+    if isinstance(metrics, str):
+        metrics = [metrics]
+    assert all([isinstance(m, str) for m in metrics]), "The metrics must be represented as strings"
+    assert all(["@" in m for m in metrics]), "The @ is missing on some of the given metrics"
+    assert all([m.split("@")[0] in valid_metrics for m in metrics]), "Some of the given metrics are not valid." \
+                                                                     "The accepted metrics are " + str(valid_metrics)
+    assert all([m.split("@")[1].isdigit() for m in metrics]), "The k must be an integer"
+
+
+def compute_metric(metric, pred_scores, ground_truth):
+    """
+    Compute the given metric on the given predictions and ground truth.
+
+    :param metric: name of the metric that has to be computed
+    :param pred_scores: score vector in output from the recommender (unsorted ranking)
+    :param ground_truth: binary vector with relevance data (1 relevant, 0 not relevant)
+    :return: the value of the given metric for the given predictions and relevance
+    """
+    m, k = metric.split("@")
+    k = int(k)
+
+    if m == "ndcg":
+        return ndcg_at_k(pred_scores, ground_truth, k=k)
+    if m == "hit":
+        return hit_at_k(pred_scores, ground_truth, k=k)
+    else:
+        return recall_at_k(pred_scores, ground_truth, k=k)
