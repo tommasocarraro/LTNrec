@@ -252,3 +252,51 @@ class LTNTrainerMF(MFTrainer):
                 train_loss += train_sat.item()
 
             return train_loss / len(train_loader)
+
+
+class LTNTrainerMFGenres(LTNTrainerMF):
+    """
+    Trainer for the Logic Tensor Network with Matrix Factorization as the predictive model for the Likes function. In
+    addition, unlike the previous model, this LTN has an additional axiom in the loss function. This axiom serves as
+    a kind of regularization for the embeddings learned by the MF model. The axiom states that if a user dislikes a
+    movie genre, then if a movie has that genre, the user should dislike it.
+
+    The Likes function takes as input a user-item pair and produce an un-normalized score (MF). Ideally, this score
+    should be near 1 if the user likes the item, and near 0 if the user dislikes the item.
+
+    The closeness between the predictions of the Likes function and the ground truth provided by the dataset for the
+    training user-item pairs is obtained by maximizing the truth value of the predicate Sim. The predicate Sim takes
+    as input a predicted score and the ground truth, and returns a value in the range [0., 1.]. Higher the value,
+    higher the closeness between the predicted score and the ground truth.
+    """
+
+    def __init__(self, mf_model, optimizer):
+        """
+        Constructor of the trainer for the LTN with MF as base model.
+
+        :param mf_model: Matrix Factorization model to implement the Likes function
+        :param optimizer: optimizer used for the training of the model
+        """
+        super(LTNTrainerMF, self).__init__(mf_model, optimizer)
+        self.Likes = ltn.Function(self.model)
+        self.Sim = ltn.Predicate(func=lambda pred, gt: torch.exp(-0.2 * torch.square(pred - gt)))
+        self.Not = ltn.Connective(ltn.fuzzy_ops.NotStandard())
+        self.Forall = ltn.Quantifier(ltn.fuzzy_ops.AggregPMeanError(p=2), quantifier='f')
+        self.sat_agg = ltn.fuzzy_ops.SatAgg()
+
+    def train_epoch(self, train_loader):
+        train_loss = 0.0
+        for batch_idx, ((u, i, r), (u_g, i_g)) in enumerate(train_loader):
+            self.optimizer.zero_grad()
+            f1 = self.Forall(ltn.diag(u, i, r), self.Sim(self.Likes(u, i), r))
+            gt = ltn.Variable('gt', torch.zeros_like(u_g.value), add_batch_dim=False)
+            f2 = self.Forall(ltn.diag(u_g, i_g, gt), self.Sim(self.Likes(u_g, i_g), gt))
+            if batch_idx == 0:
+                print("f1 %.3f - f2 %.3f" % (f1.value.item(), f2.value.item()))
+            train_sat = self.sat_agg(f1, f2)
+            loss = 1. - train_sat
+            loss.backward()
+            self.optimizer.step()
+            train_loss += train_sat.item()
+
+        return train_loss / len(train_loader)

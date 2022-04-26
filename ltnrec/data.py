@@ -169,6 +169,7 @@ class MindReaderDataset:
         2. movie_idx;
         3. rating: 1 or -1.
         """
+        # todo qui devo filtrare i ratings sulla base di una percentuale fornita
         return [(u, self.movie_to_idx[self.idx_to_uri[r['e_idx']]], r['rating'])
                 for u, ratings in self.split['training'] for r in ratings if r['is_movie_rating']]
 
@@ -183,3 +184,22 @@ class MindReaderDataset:
         return [(u, self.genre_to_idx[self.uri_to_genre[self.idx_to_uri[r['e_idx']]]], r['rating'])
                 for u, ratings in self.split['training']
                 for r in ratings if self.idx_to_uri[r['e_idx']] in self.genres_uri]
+
+    def get_user_genre_ratings_dict(self):
+        """
+        Returns the ratings of the users for the genres of the MindReader dataset. It returns a dictionary with the
+        following structure. For each user, there are two dictionaries. The first one contains the genres that the user
+        likes, while the second one contains the genres that the user dislikes.
+        """
+        user_genres = {}
+        for u, ratings in self.split['training']:
+            user_genres[u] = {'likes': [], 'dislikes': []}
+            for r in ratings:
+                if self.idx_to_uri[r['e_idx']] in self.genres_uri:
+                    if r['rating'] == 1:
+                        user_genres[u]['likes'].append(
+                            self.genre_to_idx[self.uri_to_genre[self.idx_to_uri[r['e_idx']]]])
+                    else:
+                        user_genres[u]['dislikes'].append(
+                            self.genre_to_idx[self.uri_to_genre[self.idx_to_uri[r['e_idx']]]])
+        return user_genres

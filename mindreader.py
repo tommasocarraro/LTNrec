@@ -10,7 +10,7 @@ emb_size = [1]
 b_size = [64]
 lr = [0.001]
 lambda_reg = [0.0001]
-data = MindReaderDataset("./dataset/mr_ntp_all_movies")
+data = MindReaderDataset("./dataset/mr_ntp_all_entities")
 val_loader = ValDataLoader(data.validation, 256)
 test_loader = ValDataLoader(data.test, 256)
 for e in emb_size:
