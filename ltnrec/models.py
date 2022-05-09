@@ -23,10 +23,14 @@ class MatrixFactorization(torch.nn.Module):
         super(MatrixFactorization, self).__init__()
         self.u_emb = torch.nn.Embedding(n_users, n_factors)
         self.i_emb = torch.nn.Embedding(n_items, n_factors)
+        torch.nn.init.xavier_normal_(self.u_emb.weight)
+        torch.nn.init.xavier_normal_(self.i_emb.weight)
         self.biased = biased
         if biased:
             self.u_bias = torch.nn.Embedding(n_users, 1)
             self.i_bias = torch.nn.Embedding(n_items, 1)
+            torch.nn.init.normal_(self.u_bias.weight)
+            torch.nn.init.normal_(self.i_bias.weight)
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, u_idx, i_idx, dim=1, normalize=False):
@@ -215,6 +219,37 @@ class MFTrainer(Trainer):
         return results
 
 
+class MFTrainerExp(MFTrainer):
+    """
+    Trainer for the Matrix Factorization model with the exponential loss.
+
+    The objective of the Matrix Factorization is to minimize the MSE between the predictions of the model and the
+    ground truth.
+    """
+    def __init__(self, mf_model, optimizer):
+        """
+        Constructor of the trainer for the MF model.
+
+        :param mf_model: Matrix Factorization model
+        :param optimizer: optimizer used for the training of the model
+        """
+        super(MFTrainerExp, self).__init__(mf_model, optimizer)
+        self.exp_loss = lambda pred, gt: torch.exp(-0.1 * torch.square(pred - gt))
+
+    def train_epoch(self, train_loader):
+        train_loss = 0.0
+        for batch_idx, (u_i_pairs, ratings) in enumerate(train_loader):
+            self.optimizer.zero_grad()
+            train_sat = 1. - torch.pow(torch.mean(torch.pow(1. - self.exp_loss(self.model(u_i_pairs[:, 0],
+                                                                                          u_i_pairs[:, 1]),
+                                                                               ratings), 2)), 1/2)
+            loss = 1. - train_sat
+            loss.backward()
+            self.optimizer.step()
+            train_loss += train_sat.item()
+        return train_loss / len(train_loader)
+
+
 class LTNTrainerMF(MFTrainer):
     """
     Trainer for the Logic Tensor Network with Matrix Factorization as the predictive model for the Likes function.
@@ -227,16 +262,17 @@ class LTNTrainerMF(MFTrainer):
     as input a predicted score and the ground truth, and returns a value in the range [0., 1.]. Higher the value,
     higher the closeness between the predicted score and the ground truth.
     """
-    def __init__(self, mf_model, optimizer):
+    def __init__(self, mf_model, optimizer, alpha):
         """
         Constructor of the trainer for the LTN with MF as base model.
 
         :param mf_model: Matrix Factorization model to implement the Likes function
         :param optimizer: optimizer used for the training of the model
+        :param alpha: coefficient of smooth equality predicate
         """
         super(LTNTrainerMF, self).__init__(mf_model, optimizer)
         self.Likes = ltn.Function(self.model)
-        self.Sim = ltn.Predicate(func=lambda pred, gt: torch.exp(-0.2 * torch.square(pred - gt)))
+        self.Sim = ltn.Predicate(func=lambda pred, gt: torch.exp(-alpha * torch.square(pred - gt)))
         self.Not = ltn.Connective(ltn.fuzzy_ops.NotStandard())
         self.Forall = ltn.Quantifier(ltn.fuzzy_ops.AggregPMeanError(p=2), quantifier='f')
         self.sat_agg = ltn.fuzzy_ops.SatAgg()
@@ -270,30 +306,70 @@ class LTNTrainerMFGenres(LTNTrainerMF):
     higher the closeness between the predicted score and the ground truth.
     """
 
-    def __init__(self, mf_model, optimizer):
+    def __init__(self, mf_model, optimizer, alpha, p):
         """
         Constructor of the trainer for the LTN with MF as base model.
 
         :param mf_model: Matrix Factorization model to implement the Likes function
         :param optimizer: optimizer used for the training of the model
+        :param alpha: coefficient of smooth equality predicate
+        :param p: hyper-parameter p for pMeanError of rule on genres
         """
-        super(LTNTrainerMF, self).__init__(mf_model, optimizer)
-        self.Likes = ltn.Function(self.model)
-        self.Sim = ltn.Predicate(func=lambda pred, gt: torch.exp(-0.2 * torch.square(pred - gt)))
-        self.Not = ltn.Connective(ltn.fuzzy_ops.NotStandard())
-        self.Forall = ltn.Quantifier(ltn.fuzzy_ops.AggregPMeanError(p=2), quantifier='f')
-        self.sat_agg = ltn.fuzzy_ops.SatAgg()
+        super(LTNTrainerMFGenres, self).__init__(mf_model, optimizer, alpha)
+        self.p = p
 
     def train_epoch(self, train_loader):
         train_loss = 0.0
-        for batch_idx, ((u, i, r), (u_g, i_g)) in enumerate(train_loader):
+        for batch_idx, ((u, i, r), (u_g, i_g, gt)) in enumerate(train_loader):
             self.optimizer.zero_grad()
             f1 = self.Forall(ltn.diag(u, i, r), self.Sim(self.Likes(u, i), r))
-            gt = ltn.Variable('gt', torch.zeros_like(u_g.value), add_batch_dim=False)
-            f2 = self.Forall(ltn.diag(u_g, i_g, gt), self.Sim(self.Likes(u_g, i_g), gt))
-            if batch_idx == 0:
-                print("f1 %.3f - f2 %.3f" % (f1.value.item(), f2.value.item()))
-            train_sat = self.sat_agg(f1, f2)
+            if u_g is not None:
+                f2 = self.Forall(ltn.diag(u_g, i_g, gt), self.Sim(self.Likes(u_g, i_g), gt), p=self.p)
+                train_sat = self.sat_agg(f1, f2)
+            else:
+                train_sat = f1.value
+            loss = 1. - train_sat
+            loss.backward()
+            self.optimizer.step()
+            train_loss += train_sat.item()
+
+        return train_loss / len(train_loader)
+
+
+class LTNTrainerMFGenres2(LTNTrainerMFGenres):
+    """
+    Trainer for the Logic Tensor Network with Matrix Factorization as the predictive model for the Likes function. In
+    addition, unlike the previous model, this LTN has an additional axiom in the loss function. This axiom serves as
+    a kind of regularization for the embeddings learned by the MF model. The axiom states that if a user dislikes a
+    movie genre, then if a movie has that genre, the user should dislike it.
+
+    The Likes function takes as input a user-item pair and produce an un-normalized score (MF). Ideally, this score
+    should be near 1 if the user likes the item, and near 0 if the user dislikes the item.
+
+    The closeness between the predictions of the Likes function and the ground truth provided by the dataset for the
+    training user-item pairs is obtained by maximizing the truth value of the predicate Sim. The predicate Sim takes
+    as input a predicted score and the ground truth, and returns a value in the range [0., 1.]. Higher the value,
+    higher the closeness between the predicted score and the ground truth.
+    """
+
+    def __init__(self, mf_model, optimizer, alpha):
+        """
+        Constructor of the trainer for the LTN with MF as base model.
+
+        :param mf_model: Matrix Factorization model to implement the Likes function
+        :param optimizer: optimizer used for the training of the model
+        :param alpha: coefficient of smooth equality predicate
+        """
+        super(LTNTrainerMFGenres2, self).__init__(mf_model, optimizer, alpha)
+
+    def train_epoch(self, train_loader):
+        train_loss = 0.0
+        for batch_idx, ((u, i, r), (u_g_n, i_g_n, gt_n), (u_g_p, i_g_p, gt_p)) in enumerate(train_loader):
+            self.optimizer.zero_grad()
+            f1 = self.Forall(ltn.diag(u, i, r), self.Sim(self.Likes(u, i), r))
+            f2 = self.Forall(ltn.diag(u_g_n, i_g_n, gt_n), self.Sim(self.Likes(u_g_n, i_g_n), gt_n))
+            f3 = self.Forall(ltn.diag(u_g_p, i_g_p, gt_p), self.Sim(self.Likes(u_g_p, i_g_p), gt_p))
+            train_sat = self.sat_agg(f1, f2, f3)
             loss = 1. - train_sat
             loss.backward()
             self.optimizer.step()

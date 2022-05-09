@@ -1,0 +1,126 @@
+{
+    "mf": {
+        "emb_size": [
+            1,
+            10
+        ],
+        "lr": [
+            0.001
+        ],
+        "reg_coeff": [
+            0.001,
+            0.0001
+        ],
+        "mf_bias": [
+            false,
+            true
+        ],
+        "batch_size": [
+            32,
+            64
+        ],
+        "alpha": [null],
+        "p": [null]
+    },
+    "ltn": {
+        "emb_size": [
+            1,
+            10
+        ],
+        "lr": [
+            0.001
+        ],
+        "reg_coeff": [
+            0.001,
+            0.0001
+        ],
+        "mf_bias": [
+            false,
+            true
+        ],
+        "batch_size": [
+            64
+        ],
+        "alpha": [
+            0.1,
+            0.2
+        ],
+        "p": [null]
+    },
+    "ltn-genres": {
+        "emb_size": [
+            1,
+            10
+        ],
+        "lr": [
+            0.001
+        ],
+        "reg_coeff": [
+            0.001,
+            0.0001
+        ],
+        "mf_bias": [
+            false,
+            true
+        ],
+        "batch_size": [
+            64
+        ],
+        "alpha": [
+            0.1,
+            0.2
+        ],
+        "p": [
+            2,
+            5
+        ]
+    },
+    "ltn-genres-2": {
+        "emb_size": [
+            1,
+            10
+        ],
+        "lr": [
+            0.001
+        ],
+        "reg_coeff": [
+            0.001,
+            0.0001
+        ],
+        "mf_bias": [
+            false,
+            true
+        ],
+        "batch_size": [
+            64
+        ],
+        "alpha": [
+            0.1,
+            0.2
+        ]
+    },
+    "ltn-genres-3": {
+        "emb_size": [
+            1,
+            10
+        ],
+        "lr": [
+            0.001
+        ],
+        "reg_coeff": [
+            0.001,
+            0.0001
+        ],
+        "mf_bias": [
+            false,
+            true
+        ],
+        "batch_size": [
+            64
+        ],
+        "alpha": [
+            0.1,
+            0.2
+        ]
+    }
+}
