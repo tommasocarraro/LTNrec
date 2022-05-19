@@ -212,7 +212,7 @@ class MindReaderDataset:
         :param seed: seed used to randomly pick training ratings for each user in the case `keep` is not None
         """
         filtered_train = copy.deepcopy(self.split["training"])
-        if keep is not None:
+        if keep is not None and keep != 1.0:
             if seed:
                 np.random.seed(seed)
             for i, (u, ratings) in enumerate(filtered_train):
