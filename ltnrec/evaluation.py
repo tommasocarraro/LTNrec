@@ -107,7 +107,7 @@ def grid_search(model_name, fold, fold_percentage, data, seed=None):
         os.remove(save_path.replace(model_name, model_name + "_"))
 
 
-def experiment(models, data, proportions, test_metrics, starting_seed=0, n_runs=10):
+def experiment(models, data, proportions, test_metrics, report_save_path, starting_seed=0, n_runs=10, parallelize=False):
     """
     For each of the given models:
         1. Loading of model parameters:
@@ -126,15 +126,23 @@ def experiment(models, data, proportions, test_metrics, starting_seed=0, n_runs=
     :param data: dataset on which the experiment has to be performed
     :param proportions: proportions of training ratings on which the models have to be trained and tested
     :param test_metrics: list of metrics name that have to be used as test metrics for the test of the models
+    :param report_save_path: path where to save a dictionary containing a report of the performed experiments
     :param starting_seed: seed for the first run of the experiment. The seeds for the other runs are simply the
     successors of the starting seed
     :param n_runs: number of times the experiments have to be run. Then, the metrics are averaged across these runs
+    :param parallelize: whether the experiments have to be parallelized and distributed across the available processors.
+    Note that in case of parallelization, the training logs on the console will be unordered.
     """
     # prepare dictionary that has to be shared across different concurrent runs
-    manager = Manager()
-    results = manager.dict({model: manager.dict({seed: manager.dict({fold: {} for fold in proportions})
-                                                 for seed in range(starting_seed, starting_seed + n_runs)})
-                            for model in models})
+    if parallelize:
+        manager = Manager()
+        results = manager.dict({model: manager.dict({seed: manager.dict({fold: {} for fold in proportions})
+                                                     for seed in range(starting_seed, starting_seed + n_runs)})
+                                for model in models})
+    else:
+        results = {model: {seed: {fold: {} for fold in proportions}
+                           for seed in range(starting_seed, starting_seed + n_runs)}
+                   for model in models}
     
     # prepare loaders to validate and test the models
     val_loader = ValDataLoader(data.validation, 256)
@@ -147,10 +155,15 @@ def experiment(models, data, proportions, test_metrics, starting_seed=0, n_runs=
     # create folds with the seed
     p_dict = {p: data.get_user_movie_ratings(keep=p) for p in proportions}
     pool = Pool(os.cpu_count())
-    # start grid searches in parallel
-    pool.starmap(grid_search, [(model_name, p_dict[p], p, data, starting_seed)
-                               for model_name in models
-                               for p in p_dict])
+    if parallelize:
+        # start grid searches in parallel
+        pool.starmap(grid_search, [(model_name, p_dict[p], p, data, starting_seed)
+                                   for model_name in models
+                                   for p in p_dict])
+    else:
+        for model_name in models:
+            for p in p_dict:
+                grid_search(model_name, p_dict[p], p, data, starting_seed)
     
     # now that every grid search is finished, we can run all the other experiments
     for seed in range(starting_seed, starting_seed + n_runs):
@@ -162,16 +175,21 @@ def experiment(models, data, proportions, test_metrics, starting_seed=0, n_runs=
         print("Creating the datasets with the given proportions of training ratings - " + str(proportions))
         p_dict = {p: data.get_user_movie_ratings(keep=p) for p in proportions}
 
-        pool.starmap(experiment_run,
-                     [(seed, model, p_dict[p], p, data, val_loader, test_loader, test_metrics, results)
-                      for model in models
-                      for p in p_dict])
+        if parallelize:
+            pool.starmap(experiment_run,
+                         [(seed, model, p_dict[p], p, data, val_loader, test_loader, test_metrics, results)
+                          for model in models
+                          for p in p_dict])
+        else:
+            for model in models:
+                for p in p_dict:
+                    experiment_run(seed, model, p_dict[p], p, data, val_loader, test_loader, test_metrics, results)
 
     # convert to normal dict to save data
     normal_results = {m: {seed: dict(results[m][seed]) for seed in dict(results[m])} for m in results}
 
     # save the dictionary as json in the results/ folder
-    with open("./results/results.json", 'w') as fp:
+    with open(report_save_path, 'w') as fp:
         json.dump(normal_results, fp, indent=4)
 
 
