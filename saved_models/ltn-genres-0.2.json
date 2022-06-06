@@ -1,0 +1,9 @@
+{
+    "emb_size": 1,
+    "mf_bias": true,
+    "lr": 0.001,
+    "reg_coeff": 0.001,
+    "batch_size": 32,
+    "alpha": 0.1,
+    "p": 5
+}
